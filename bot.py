@@ -12,236 +12,369 @@ try:
 except ImportError:
     pass
 
-print("DEBUG -> DISCORD_TOKEN exists:", bool(os.getenv("DISCORD_TOKEN")))
-print("DEBUG -> TOKEN exists:", bool(os.getenv("TOKEN")))
-print("DEBUG -> Railway env keys:", [k for k in os.environ.keys() if "TOKEN" in k or "DISCORD" in k or "RAILWAY" in k])
-
 TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
 if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN/TOKEN nu este setat.")
+    raise RuntimeError("DISCORD_TOKEN sau TOKEN nu este setat.")
 
 PORT = int(os.environ.get("PORT", 8080))
 ORDERS_FILE = "orders.json"
 
-PRODUCTS = {
+PRODUSE = {
     "amoniac":    {"label": "Amoniac",    "price": 4500, "emoji": "🧪"},
     "bicarbonat": {"label": "Bicarbonat", "price": 4500, "emoji": "🧂"},
     "plicuri":    {"label": "Plicuri",    "price": 150,  "emoji": "✉️"},
     "brichete":   {"label": "Brichete",   "price": 150,  "emoji": "🔥"},
     "detergent":  {"label": "Detergent",  "price": 350,  "emoji": "🫧"},
-    "seringa":    {"label": "Seringa",    "price": 200,  "emoji": "💉"},
+    "seringa":    {"label": "Seringă",    "price": 200,  "emoji": "💉"},
 }
 
-def load_orders() -> dict:
+
+def incarca_comenzi() -> dict:
     if os.path.exists(ORDERS_FILE):
         with open(ORDERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
 
-def save_orders(data: dict):
+
+def salveaza_comenzi(data: dict):
     with open(ORDERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-orders: dict = load_orders()
 
-def get_user_order(user_id: str) -> dict:
-    return orders.get(user_id, {}).get("items", {})
+comenzi: dict = incarca_comenzi()
 
-def order_total(items: dict) -> int:
-    return sum(PRODUCTS[k]["price"] * qty for k, qty in items.items() if k in PRODUCTS)
 
-def fmt_money(amount: int) -> str:
+def comanda_utilizator(user_id: str) -> dict:
+    return comenzi.get(user_id, {}).get("items", {})
+
+
+def total_comanda(items: dict) -> int:
+    return sum(PRODUSE[k]["price"] * qty for k, qty in items.items() if k in PRODUSE)
+
+
+def format_bani(amount: int) -> str:
     return f"${amount:,}"
 
-def build_order_embed(user, items: dict) -> discord.Embed:
+
+def embed_comanda_utilizator(user, items: dict) -> discord.Embed:
     embed = discord.Embed(
-        title=f"🛒  Comanda lui {user.display_name}",
+        title=f"🛒 Comanda lui {user.display_name}",
         color=0xF5A623,
         timestamp=datetime.utcnow(),
     )
+
     if not items:
-        embed.description = "*Coșul tău este gol.*"
+        embed.description = "*Coșul este gol.*"
         embed.color = 0x888888
     else:
-        lines = [f"{PRODUCTS[k]['emoji']} **{PRODUCTS[k]['label']}** × {qty}  →  {fmt_money(PRODUCTS[k]['price']*qty)}"
-                 for k, qty in items.items()]
+        lines = [
+            f"{PRODUSE[k]['emoji']} **{PRODUSE[k]['label']}** × {qty} → {format_bani(PRODUSE[k]['price'] * qty)}"
+            for k, qty in items.items()
+        ]
         embed.description = "\n".join(lines)
-        embed.add_field(name="💰 Total", value=f"**{fmt_money(order_total(items))}**", inline=False)
-    embed.set_footer(text="GTA V Shop Bot")
+        embed.add_field(name="💰 Total", value=f"**{format_bani(total_comanda(items))}**", inline=False)
+
+    embed.set_footer(text="Bot Magazin GTA V")
     return embed
 
-def build_all_orders_embed() -> discord.Embed:
-    embed = discord.Embed(title="📋  Toate Comenzile", color=0x2ECC71, timestamp=datetime.utcnow())
-    if not orders:
+
+def embed_toate_comenzile() -> discord.Embed:
+    embed = discord.Embed(
+        title="📋 Toate comenzile",
+        color=0x2ECC71,
+        timestamp=datetime.utcnow()
+    )
+
+    if not comenzi:
         embed.description = "*Nu există comenzi încă.*"
         return embed
-    grand = 0
-    for uid, data in orders.items():
+
+    total_general = 0
+    exista_comenzi = False
+
+    for uid, data in comenzi.items():
         items = data.get("items", {})
         if not items:
             continue
-        uname = data.get("username", f"User {uid}")
-        total = order_total(items)
-        grand += total
-        lines = [f"{PRODUCTS[k]['emoji']} {PRODUCTS[k]['label']} ×{qty}  ({fmt_money(PRODUCTS[k]['price']*qty)})"
-                 for k, qty in items.items()]
-        embed.add_field(name=f"👤 {uname}  —  {fmt_money(total)}", value="\n".join(lines), inline=False)
-    embed.add_field(name="━━━━━━━━━━━━━━━━━━", value=f"🏦 **TOTAL GENERAL: {fmt_money(grand)}**", inline=False)
-    embed.set_footer(text="GTA V Shop Bot")
+
+        exista_comenzi = True
+        nume = data.get("username", f"Utilizator {uid}")
+        total = total_comanda(items)
+        total_general += total
+
+        lines = [
+            f"{PRODUSE[k]['emoji']} {PRODUSE[k]['label']} × {qty} ({format_bani(PRODUSE[k]['price'] * qty)})"
+            for k, qty in items.items()
+        ]
+
+        embed.add_field(
+            name=f"👤 {nume} — {format_bani(total)}",
+            value="\n".join(lines),
+            inline=False
+        )
+
+    if not exista_comenzi:
+        embed.description = "*Nu există comenzi încă.*"
+        return embed
+
+    embed.add_field(
+        name="━━━━━━━━━━━━━━━━━━",
+        value=f"🏦 **TOTAL GENERAL: {format_bani(total_general)}**",
+        inline=False
+    )
+    embed.set_footer(text="Bot Magazin GTA V")
     return embed
 
-class ShopView(discord.ui.View):
+
+class VizualizareMagazin(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        for key, info in PRODUCTS.items():
-            self.add_item(ProductButton(key, info))
-        self.add_item(ViewOrderButton())
-        self.add_item(ClearOrderButton())
 
-class ProductButton(discord.ui.Button):
+        for key, info in PRODUSE.items():
+            self.add_item(ButonProdus(key, info))
+
+        self.add_item(ButonVeziComanda())
+        self.add_item(ButonStergeComanda())
+
+
+class ButonProdus(discord.ui.Button):
     def __init__(self, key: str, info: dict):
         super().__init__(
-            label=f"{info['emoji']} {info['label']}  ({fmt_money(info['price'])})",
-            custom_id=f"add_{key}",
+            label=f"{info['emoji']} {info['label']} ({format_bani(info['price'])})",
+            custom_id=f"adauga_{key}",
             style=discord.ButtonStyle.primary,
-            row=list(PRODUCTS.keys()).index(key) // 3,
+            row=list(PRODUSE.keys()).index(key) // 3,
         )
         self.key = key
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(QuantityModal(self.key))
+        await interaction.response.send_modal(ModalCantitate(self.key))
 
-class ViewOrderButton(discord.ui.Button):
+
+class ButonVeziComanda(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="📦 Vezi comanda", custom_id="view_order",
-                         style=discord.ButtonStyle.secondary, row=2)
+        super().__init__(
+            label="📦 Vezi comanda",
+            custom_id="vezi_comanda",
+            style=discord.ButtonStyle.secondary,
+            row=2
+        )
 
     async def callback(self, interaction: discord.Interaction):
-        embed = build_order_embed(interaction.user, get_user_order(str(interaction.user.id)))
+        embed = embed_comanda_utilizator(
+            interaction.user,
+            comanda_utilizator(str(interaction.user.id))
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-class ClearOrderButton(discord.ui.Button):
+
+class ButonStergeComanda(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="🗑️ Șterge comanda", custom_id="clear_order",
-                         style=discord.ButtonStyle.danger, row=2)
+        super().__init__(
+            label="🗑️ Șterge comanda",
+            custom_id="sterge_comanda",
+            style=discord.ButtonStyle.danger,
+            row=2
+        )
 
     async def callback(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
-        if uid in orders:
-            orders[uid]["items"] = {}
-            save_orders(orders)
-        await interaction.response.send_message("✅ Comanda ta a fost ștearsă.", ephemeral=True)
+        if uid in comenzi:
+            comenzi[uid]["items"] = {}
+            salveaza_comenzi(comenzi)
 
-class QuantityModal(discord.ui.Modal, title="Adaugă la comandă"):
-    quantity = discord.ui.TextInput(label="Cantitate", placeholder="ex: 2", min_length=1, max_length=4)
+        await interaction.response.send_message(
+            "✅ Comanda ta a fost ștearsă.",
+            ephemeral=True
+        )
+
+
+class ModalCantitate(discord.ui.Modal, title="Adaugă produs în comandă"):
+    cantitate = discord.ui.TextInput(
+        label="Cantitate",
+        placeholder="Exemplu: 2",
+        min_length=1,
+        max_length=4
+    )
 
     def __init__(self, key: str):
         super().__init__()
         self.key = key
-        self.title = f"Adaugă {PRODUCTS[key]['emoji']} {PRODUCTS[key]['label']}"
+        self.title = f"Adaugă {PRODUSE[key]['emoji']} {PRODUSE[key]['label']}"
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            qty = int(self.quantity.value)
+            qty = int(self.cantitate.value)
             if qty <= 0:
                 raise ValueError
         except ValueError:
-            await interaction.response.send_message("❌ Te rog introdu un număr valid (> 0).", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Te rog să introduci un număr valid mai mare decât 0.",
+                ephemeral=True
+            )
             return
+
         uid = str(interaction.user.id)
-        if uid not in orders:
-            orders[uid] = {"username": interaction.user.display_name, "items": {}}
-        orders[uid]["username"] = interaction.user.display_name
-        orders[uid]["items"][self.key] = orders[uid]["items"].get(self.key, 0) + qty
-        save_orders(orders)
-        p = PRODUCTS[self.key]
+
+        if uid not in comenzi:
+            comenzi[uid] = {
+                "username": interaction.user.display_name,
+                "items": {}
+            }
+
+        comenzi[uid]["username"] = interaction.user.display_name
+        comenzi[uid]["items"][self.key] = comenzi[uid]["items"].get(self.key, 0) + qty
+        salveaza_comenzi(comenzi)
+
+        produs = PRODUSE[self.key]
         embed = discord.Embed(
-            title="✅ Adăugat la comandă!",
-            description=(f"{p['emoji']} **{p['label']}** × {qty}  →  {fmt_money(p['price']*qty)}\n\n"
-                         f"💰 Total comandă: **{fmt_money(order_total(orders[uid]['items']))}**"),
+            title="✅ Produs adăugat",
+            description=(
+                f"{produs['emoji']} **{produs['label']}** × {qty} → {format_bani(produs['price'] * qty)}\n\n"
+                f"💰 Total comandă: **{format_bani(total_comanda(comenzi[uid]['items']))}**"
+            ),
             color=0x2ECC71,
         )
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-class AdminView(discord.ui.View):
+
+class VizualizareAdmin(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="📋 Vezi toate comenzile", custom_id="admin_all",
-                       style=discord.ButtonStyle.success)
-    async def all_orders(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(embed=build_all_orders_embed(), ephemeral=True)
+    @discord.ui.button(
+        label="📋 Vezi toate comenzile",
+        custom_id="admin_toate_comenzile",
+        style=discord.ButtonStyle.success
+    )
+    async def toate_comenzile(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            embed=embed_toate_comenzile(),
+            ephemeral=True
+        )
 
-    @discord.ui.button(label="🗑️ Șterge TOATE comenzile", custom_id="admin_clear_all",
-                       style=discord.ButtonStyle.danger)
-    async def clear_all(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(ConfirmClearModal())
+    @discord.ui.button(
+        label="🗑️ Șterge toate comenzile",
+        custom_id="admin_sterge_toate",
+        style=discord.ButtonStyle.danger
+    )
+    async def sterge_toate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ModalConfirmareStergere())
 
-class ConfirmClearModal(discord.ui.Modal, title="Confirmare ștergere"):
-    confirm = discord.ui.TextInput(label='Scrie "CONFIRM" pentru a șterge',
-                                   placeholder="CONFIRM", min_length=7, max_length=7)
+
+class ModalConfirmareStergere(discord.ui.Modal, title="Confirmare ștergere totală"):
+    confirmare = discord.ui.TextInput(
+        label='Scrie "CONFIRM" pentru a șterge tot',
+        placeholder="CONFIRM",
+        min_length=7,
+        max_length=7
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
-        if self.confirm.value.strip().upper() == "CONFIRM":
-            orders.clear()
-            save_orders(orders)
-            await interaction.response.send_message("✅ Toate comenzile au fost șterse.", ephemeral=True)
+        if self.confirmare.value.strip().upper() == "CONFIRM":
+            comenzi.clear()
+            salveaza_comenzi(comenzi)
+            await interaction.response.send_message(
+                "✅ Toate comenzile au fost șterse.",
+                ephemeral=True
+            )
         else:
-            await interaction.response.send_message("❌ Anulat. Scrie exact CONFIRM.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Acțiune anulată. Trebuie să scrii exact CONFIRM.",
+                ephemeral=True
+            )
+
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
+
 
 @bot.event
 async def on_ready():
-    bot.add_view(ShopView())
-    bot.add_view(AdminView())
-    print(f"✅ Bot pornit ca {bot.user}  (ID: {bot.user.id})")
+    bot.add_view(VizualizareMagazin())
+    bot.add_view(VizualizareAdmin())
+    print(f"✅ Bot pornit ca {bot.user} (ID: {bot.user.id})")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-@bot.command(name="shop")
+
+@bot.command(name="magazin")
 @commands.has_permissions(administrator=True)
-async def post_shop(ctx):
+async def magazin(ctx):
     embed = discord.Embed(
-        title="🏪  GTA V Shop",
-        description=("Bun venit la magazin! Apasă un buton pentru a adăuga produse la comanda ta.\n\n"
-                     + "\n".join(f"{v['emoji']} **{v['label']}** — {fmt_money(v['price'])}"
-                                 for v in PRODUCTS.values())),
+        title="🏪 Magazin GTA V",
+        description=(
+            "Bun venit la magazin. Apasă un buton pentru a adăuga produse în comanda ta.\n\n"
+            + "\n".join(
+                f"{v['emoji']} **{v['label']}** — {format_bani(v['price'])}"
+                for v in PRODUSE.values()
+            )
+        ),
         color=0xF5A623,
     )
-    embed.set_footer(text="Folosește butoanele de mai jos pentru a gestiona comanda ta.")
-    await ctx.send(embed=embed, view=ShopView())
+    embed.set_footer(text="Folosește butoanele de mai jos pentru a-ți gestiona comanda.")
+    await ctx.send(embed=embed, view=VizualizareMagazin())
     await ctx.message.delete()
 
-@bot.command(name="adminpanel")
+
+@bot.command(name="panouadmin")
 @commands.has_permissions(administrator=True)
-async def post_admin(ctx):
-    embed = discord.Embed(title="⚙️  Panou Admin",
-                          description="Gestionează toate comenzile de pe server.", color=0xE74C3C)
-    await ctx.send(embed=embed, view=AdminView())
+async def panou_admin(ctx):
+    embed = discord.Embed(
+        title="⚙️ Panou administrator",
+        description="De aici poți gestiona toate comenzile de pe server.",
+        color=0xE74C3C
+    )
+    await ctx.send(embed=embed, view=VizualizareAdmin())
     await ctx.message.delete()
 
-@bot.command(name="orders")
-@commands.has_permissions(administrator=True)
-async def show_orders(ctx):
-    await ctx.send(embed=build_all_orders_embed())
 
-async def handle_health(_request):
+@bot.command(name="toatecomenzile")
+@commands.has_permissions(administrator=True)
+async def toate_comenzile(ctx):
+    await ctx.send(embed=embed_toate_comenzile())
+
+
+@bot.command(name="comandamea")
+async def comanda_mea(ctx):
+    embed = embed_comanda_utilizator(
+        ctx.author,
+        comanda_utilizator(str(ctx.author.id))
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="comanda")
+@commands.has_permissions(administrator=True)
+async def comanda_membru(ctx, membru: discord.Member):
+    embed = embed_comanda_utilizator(
+        membru,
+        comanda_utilizator(str(membru.id))
+    )
+    await ctx.send(embed=embed)
+
+
+async def healthcheck(_request):
     return web.Response(text="OK")
 
-async def start_web_server():
+
+async def porneste_server_web():
     app = web.Application()
-    app.router.add_get("/", handle_health)
-    app.router.add_get("/health", handle_health)
+    app.router.add_get("/", healthcheck)
+    app.router.add_get("/health", healthcheck)
+
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
-    print(f"🌐 Health server running on port {PORT}")
+    print(f"🌐 Server healthcheck pornit pe portul {PORT}")
+
 
 async def main():
     async with bot:
-        await start_web_server()
+        await porneste_server_web()
         await bot.start(TOKEN)
+
 
 asyncio.run(main())
