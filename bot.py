@@ -12,7 +12,9 @@ try:
 except ImportError:
     pass
 
-TOKEN = os.environ["DISCORD_TOKEN"]
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    raise RuntimeError("DISCORD_TOKEN nu este setat.")
 PORT  = int(os.environ.get("PORT", 8080))
 ORDERS_FILE = "orders.json"
 
