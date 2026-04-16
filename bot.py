@@ -17,46 +17,52 @@ if not TOKEN:
     raise RuntimeError("DISCORD_TOKEN sau TOKEN nu este setat.")
 
 PORT = int(os.environ.get("PORT", 8080))
-ORDERS_FILE = "orders.json"
+
+DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
+FISIER_COMENZI = os.path.join(DATA_DIR, "orders.json")
 
 PRODUSE = {
-    "amoniac":    {"label": "Amoniac",    "price": 4500, "emoji": "🧪"},
+    "amoniac": {"label": "Amoniac", "price": 4500, "emoji": "🧪"},
     "bicarbonat": {"label": "Bicarbonat", "price": 4500, "emoji": "🧂"},
-    "plicuri":    {"label": "Plicuri",    "price": 150,  "emoji": "✉️"},
-    "brichete":   {"label": "Brichete",   "price": 150,  "emoji": "🔥"},
-    "detergent":  {"label": "Detergent",  "price": 350,  "emoji": "🫧"},
-    "seringa":    {"label": "Seringă",    "price": 200,  "emoji": "💉"},
+    "plicuri": {"label": "Plicuri", "price": 150, "emoji": "✉️"},
+    "brichete": {"label": "Brichete", "price": 150, "emoji": "🔥"},
+    "detergent": {"label": "Detergent", "price": 350, "emoji": "🫧"},
+    "seringa": {"label": "Seringă", "price": 200, "emoji": "💉"},
 }
 
 
 def incarca_comenzi() -> dict:
-    if os.path.exists(ORDERS_FILE):
-        with open(ORDERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+    if os.path.exists(FISIER_COMENZI):
+        try:
+            with open(FISIER_COMENZI, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return {}
     return {}
 
 
 def salveaza_comenzi(data: dict):
-    with open(ORDERS_FILE, "w", encoding="utf-8") as f:
+    with open(FISIER_COMENZI, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 comenzi: dict = incarca_comenzi()
 
 
-def comanda_utilizator(user_id: str) -> dict:
+def ia_comanda_utilizator(user_id: str) -> dict:
     return comenzi.get(user_id, {}).get("items", {})
 
 
-def total_comanda(items: dict) -> int:
+def calculeaza_total(items: dict) -> int:
     return sum(PRODUSE[k]["price"] * qty for k, qty in items.items() if k in PRODUSE)
 
 
-def format_bani(amount: int) -> str:
-    return f"${amount:,}"
+def format_bani(suma: int) -> str:
+    return f"${suma:,}"
 
 
-def embed_comanda_utilizator(user, items: dict) -> discord.Embed:
+def construieste_embed_comanda(user, items: dict) -> discord.Embed:
     embed = discord.Embed(
         title=f"🛒 Comanda lui {user.display_name}",
         color=0xF5A623,
@@ -67,18 +73,22 @@ def embed_comanda_utilizator(user, items: dict) -> discord.Embed:
         embed.description = "*Coșul este gol.*"
         embed.color = 0x888888
     else:
-        lines = [
+        linii = [
             f"{PRODUSE[k]['emoji']} **{PRODUSE[k]['label']}** × {qty} → {format_bani(PRODUSE[k]['price'] * qty)}"
             for k, qty in items.items()
         ]
-        embed.description = "\n".join(lines)
-        embed.add_field(name="💰 Total", value=f"**{format_bani(total_comanda(items))}**", inline=False)
+        embed.description = "\n".join(linii)
+        embed.add_field(
+            name="💰 Total",
+            value=f"**{format_bani(calculeaza_total(items))}**",
+            inline=False
+        )
 
     embed.set_footer(text="Bot Magazin GTA V")
     return embed
 
 
-def embed_toate_comenzile() -> discord.Embed:
+def construieste_embed_toate_comenzile() -> discord.Embed:
     embed = discord.Embed(
         title="📋 Toate comenzile",
         color=0x2ECC71,
@@ -99,17 +109,17 @@ def embed_toate_comenzile() -> discord.Embed:
 
         exista_comenzi = True
         nume = data.get("username", f"Utilizator {uid}")
-        total = total_comanda(items)
+        total = calculeaza_total(items)
         total_general += total
 
-        lines = [
+        linii = [
             f"{PRODUSE[k]['emoji']} {PRODUSE[k]['label']} × {qty} ({format_bani(PRODUSE[k]['price'] * qty)})"
             for k, qty in items.items()
         ]
 
         embed.add_field(
             name=f"👤 {nume} — {format_bani(total)}",
-            value="\n".join(lines),
+            value="\n".join(linii),
             inline=False
         )
 
@@ -161,9 +171,9 @@ class ButonVeziComanda(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        embed = embed_comanda_utilizator(
+        embed = construieste_embed_comanda(
             interaction.user,
-            comanda_utilizator(str(interaction.user.id))
+            ia_comanda_utilizator(str(interaction.user.id))
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -179,6 +189,7 @@ class ButonStergeComanda(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
+
         if uid in comenzi:
             comenzi[uid]["items"] = {}
             salveaza_comenzi(comenzi)
@@ -189,7 +200,7 @@ class ButonStergeComanda(discord.ui.Button):
         )
 
 
-class ModalCantitate(discord.ui.Modal, title="Adaugă produs în comandă"):
+class ModalCantitate(discord.ui.Modal, title="Adaugă produs"):
     cantitate = discord.ui.TextInput(
         label="Cantitate",
         placeholder="Exemplu: 2",
@@ -231,7 +242,7 @@ class ModalCantitate(discord.ui.Modal, title="Adaugă produs în comandă"):
             title="✅ Produs adăugat",
             description=(
                 f"{produs['emoji']} **{produs['label']}** × {qty} → {format_bani(produs['price'] * qty)}\n\n"
-                f"💰 Total comandă: **{format_bani(total_comanda(comenzi[uid]['items']))}**"
+                f"💰 Total comandă: **{format_bani(calculeaza_total(comenzi[uid]['items']))}**"
             ),
             color=0x2ECC71,
         )
@@ -250,7 +261,7 @@ class VizualizareAdmin(discord.ui.View):
     )
     async def toate_comenzile(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(
-            embed=embed_toate_comenzile(),
+            embed=construieste_embed_toate_comenzile(),
             ephemeral=True
         )
 
@@ -297,12 +308,13 @@ async def on_ready():
     bot.add_view(VizualizareMagazin())
     bot.add_view(VizualizareAdmin())
     print(f"✅ Bot pornit ca {bot.user} (ID: {bot.user.id})")
+    print(f"📁 Fișier comenzi: {FISIER_COMENZI}")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 
 @bot.command(name="magazin")
 @commands.has_permissions(administrator=True)
-async def magazin(ctx):
+async def comanda_magazin(ctx):
     embed = discord.Embed(
         title="🏪 Magazin GTA V",
         description=(
@@ -321,7 +333,7 @@ async def magazin(ctx):
 
 @bot.command(name="panouadmin")
 @commands.has_permissions(administrator=True)
-async def panou_admin(ctx):
+async def comanda_panou_admin(ctx):
     embed = discord.Embed(
         title="⚙️ Panou administrator",
         description="De aici poți gestiona toate comenzile de pe server.",
@@ -333,15 +345,15 @@ async def panou_admin(ctx):
 
 @bot.command(name="toatecomenzile")
 @commands.has_permissions(administrator=True)
-async def toate_comenzile(ctx):
-    await ctx.send(embed=embed_toate_comenzile())
+async def comanda_toate_comenzile(ctx):
+    await ctx.send(embed=construieste_embed_toate_comenzile())
 
 
 @bot.command(name="comandamea")
 async def comanda_mea(ctx):
-    embed = embed_comanda_utilizator(
+    embed = construieste_embed_comanda(
         ctx.author,
-        comanda_utilizator(str(ctx.author.id))
+        ia_comanda_utilizator(str(ctx.author.id))
     )
     await ctx.send(embed=embed)
 
@@ -349,9 +361,9 @@ async def comanda_mea(ctx):
 @bot.command(name="comanda")
 @commands.has_permissions(administrator=True)
 async def comanda_membru(ctx, membru: discord.Member):
-    embed = embed_comanda_utilizator(
+    embed = construieste_embed_comanda(
         membru,
-        comanda_utilizator(str(membru.id))
+        ia_comanda_utilizator(str(membru.id))
     )
     await ctx.send(embed=embed)
 
