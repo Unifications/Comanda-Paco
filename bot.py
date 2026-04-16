@@ -12,11 +12,12 @@ try:
 except ImportError:
     pass
 
+print("DEBUG -> DISCORD_TOKEN exists:", bool(os.getenv("DISCORD_TOKEN")))
+print("DEBUG -> TOKEN exists:", bool(os.getenv("TOKEN")))
+print("DEBUG -> Railway env keys:", [k for k in os.environ.keys() if "TOKEN" in k or "DISCORD" in k or "RAILWAY" in k])
+
 TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
 if not TOKEN:
-    print("❌ Variabila DISCORD_TOKEN/TOKEN nu este setată.")
-    print("📌 Pe Railway mergi la service -> Variables și adaugă:")
-    print("   DISCORD_TOKEN = tokenul botului tău")
     raise RuntimeError("DISCORD_TOKEN/TOKEN nu este setat.")
 
 PORT = int(os.environ.get("PORT", 8080))
@@ -62,10 +63,8 @@ def build_order_embed(user, items: dict) -> discord.Embed:
         embed.description = "*Coșul tău este gol.*"
         embed.color = 0x888888
     else:
-        lines = [
-            f"{PRODUCTS[k]['emoji']} **{PRODUCTS[k]['label']}** × {qty}  →  {fmt_money(PRODUCTS[k]['price'] * qty)}"
-            for k, qty in items.items()
-        ]
+        lines = [f"{PRODUCTS[k]['emoji']} **{PRODUCTS[k]['label']}** × {qty}  →  {fmt_money(PRODUCTS[k]['price']*qty)}"
+                 for k, qty in items.items()]
         embed.description = "\n".join(lines)
         embed.add_field(name="💰 Total", value=f"**{fmt_money(order_total(items))}**", inline=False)
     embed.set_footer(text="GTA V Shop Bot")
@@ -76,23 +75,17 @@ def build_all_orders_embed() -> discord.Embed:
     if not orders:
         embed.description = "*Nu există comenzi încă.*"
         return embed
-
     grand = 0
     for uid, data in orders.items():
         items = data.get("items", {})
         if not items:
             continue
-
         uname = data.get("username", f"User {uid}")
         total = order_total(items)
         grand += total
-
-        lines = [
-            f"{PRODUCTS[k]['emoji']} {PRODUCTS[k]['label']} ×{qty}  ({fmt_money(PRODUCTS[k]['price'] * qty)})"
-            for k, qty in items.items()
-        ]
+        lines = [f"{PRODUCTS[k]['emoji']} {PRODUCTS[k]['label']} ×{qty}  ({fmt_money(PRODUCTS[k]['price']*qty)})"
+                 for k, qty in items.items()]
         embed.add_field(name=f"👤 {uname}  —  {fmt_money(total)}", value="\n".join(lines), inline=False)
-
     embed.add_field(name="━━━━━━━━━━━━━━━━━━", value=f"🏦 **TOTAL GENERAL: {fmt_money(grand)}**", inline=False)
     embed.set_footer(text="GTA V Shop Bot")
     return embed
@@ -120,12 +113,8 @@ class ProductButton(discord.ui.Button):
 
 class ViewOrderButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(
-            label="📦 Vezi comanda",
-            custom_id="view_order",
-            style=discord.ButtonStyle.secondary,
-            row=2
-        )
+        super().__init__(label="📦 Vezi comanda", custom_id="view_order",
+                         style=discord.ButtonStyle.secondary, row=2)
 
     async def callback(self, interaction: discord.Interaction):
         embed = build_order_embed(interaction.user, get_user_order(str(interaction.user.id)))
@@ -133,12 +122,8 @@ class ViewOrderButton(discord.ui.Button):
 
 class ClearOrderButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(
-            label="🗑️ Șterge comanda",
-            custom_id="clear_order",
-            style=discord.ButtonStyle.danger,
-            row=2
-        )
+        super().__init__(label="🗑️ Șterge comanda", custom_id="clear_order",
+                         style=discord.ButtonStyle.danger, row=2)
 
     async def callback(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
@@ -148,12 +133,7 @@ class ClearOrderButton(discord.ui.Button):
         await interaction.response.send_message("✅ Comanda ta a fost ștearsă.", ephemeral=True)
 
 class QuantityModal(discord.ui.Modal, title="Adaugă la comandă"):
-    quantity = discord.ui.TextInput(
-        label="Cantitate",
-        placeholder="ex: 2",
-        min_length=1,
-        max_length=4
-    )
+    quantity = discord.ui.TextInput(label="Cantitate", placeholder="ex: 2", min_length=1, max_length=4)
 
     def __init__(self, key: str):
         super().__init__()
@@ -166,27 +146,19 @@ class QuantityModal(discord.ui.Modal, title="Adaugă la comandă"):
             if qty <= 0:
                 raise ValueError
         except ValueError:
-            await interaction.response.send_message(
-                "❌ Te rog introdu un număr valid (> 0).",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Te rog introdu un număr valid (> 0).", ephemeral=True)
             return
-
         uid = str(interaction.user.id)
         if uid not in orders:
             orders[uid] = {"username": interaction.user.display_name, "items": {}}
-
         orders[uid]["username"] = interaction.user.display_name
         orders[uid]["items"][self.key] = orders[uid]["items"].get(self.key, 0) + qty
         save_orders(orders)
-
         p = PRODUCTS[self.key]
         embed = discord.Embed(
             title="✅ Adăugat la comandă!",
-            description=(
-                f"{p['emoji']} **{p['label']}** × {qty}  →  {fmt_money(p['price'] * qty)}\n\n"
-                f"💰 Total comandă: **{fmt_money(order_total(orders[uid]['items']))}**"
-            ),
+            description=(f"{p['emoji']} **{p['label']}** × {qty}  →  {fmt_money(p['price']*qty)}\n\n"
+                         f"💰 Total comandă: **{fmt_money(order_total(orders[uid]['items']))}**"),
             color=0x2ECC71,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -195,29 +167,19 @@ class AdminView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="📋 Vezi toate comenzile",
-        custom_id="admin_all",
-        style=discord.ButtonStyle.success
-    )
+    @discord.ui.button(label="📋 Vezi toate comenzile", custom_id="admin_all",
+                       style=discord.ButtonStyle.success)
     async def all_orders(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(embed=build_all_orders_embed(), ephemeral=True)
 
-    @discord.ui.button(
-        label="🗑️ Șterge TOATE comenzile",
-        custom_id="admin_clear_all",
-        style=discord.ButtonStyle.danger
-    )
+    @discord.ui.button(label="🗑️ Șterge TOATE comenzile", custom_id="admin_clear_all",
+                       style=discord.ButtonStyle.danger)
     async def clear_all(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(ConfirmClearModal())
 
 class ConfirmClearModal(discord.ui.Modal, title="Confirmare ștergere"):
-    confirm = discord.ui.TextInput(
-        label='Scrie "CONFIRM" pentru a șterge',
-        placeholder="CONFIRM",
-        min_length=7,
-        max_length=7
-    )
+    confirm = discord.ui.TextInput(label='Scrie "CONFIRM" pentru a șterge',
+                                   placeholder="CONFIRM", min_length=7, max_length=7)
 
     async def on_submit(self, interaction: discord.Interaction):
         if self.confirm.value.strip().upper() == "CONFIRM":
@@ -229,7 +191,6 @@ class ConfirmClearModal(discord.ui.Modal, title="Confirmare ștergere"):
 
 intents = discord.Intents.default()
 intents.message_content = True
-
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
@@ -244,13 +205,9 @@ async def on_ready():
 async def post_shop(ctx):
     embed = discord.Embed(
         title="🏪  GTA V Shop",
-        description=(
-            "Bun venit la magazin! Apasă un buton pentru a adăuga produse la comanda ta.\n\n"
-            + "\n".join(
-                f"{v['emoji']} **{v['label']}** — {fmt_money(v['price'])}"
-                for v in PRODUCTS.values()
-            )
-        ),
+        description=("Bun venit la magazin! Apasă un buton pentru a adăuga produse la comanda ta.\n\n"
+                     + "\n".join(f"{v['emoji']} **{v['label']}** — {fmt_money(v['price'])}"
+                                 for v in PRODUCTS.values())),
         color=0xF5A623,
     )
     embed.set_footer(text="Folosește butoanele de mai jos pentru a gestiona comanda ta.")
@@ -260,11 +217,8 @@ async def post_shop(ctx):
 @bot.command(name="adminpanel")
 @commands.has_permissions(administrator=True)
 async def post_admin(ctx):
-    embed = discord.Embed(
-        title="⚙️  Panou Admin",
-        description="Gestionează toate comenzile de pe server.",
-        color=0xE74C3C
-    )
+    embed = discord.Embed(title="⚙️  Panou Admin",
+                          description="Gestionează toate comenzile de pe server.", color=0xE74C3C)
     await ctx.send(embed=embed, view=AdminView())
     await ctx.message.delete()
 
@@ -280,7 +234,6 @@ async def start_web_server():
     app = web.Application()
     app.router.add_get("/", handle_health)
     app.router.add_get("/health", handle_health)
-
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
