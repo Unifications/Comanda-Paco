@@ -62,6 +62,18 @@ def format_bani(suma: int) -> str:
     return f"${suma:,}"
 
 
+def calculeaza_totaluri_materiale() -> dict:
+    totaluri = {cheie: 0 for cheie in PRODUSE.keys()}
+
+    for _, data in comenzi.items():
+        items = data.get("items", {})
+        for cheie, cantitate in items.items():
+            if cheie in totaluri:
+                totaluri[cheie] += cantitate
+
+    return totaluri
+
+
 def construieste_embed_comanda(user, items: dict) -> discord.Embed:
     embed = discord.Embed(
         title=f"🛒 Comanda lui {user.display_name}",
@@ -126,6 +138,24 @@ def construieste_embed_toate_comenzile() -> discord.Embed:
     if not exista_comenzi:
         embed.description = "*Nu există comenzi încă.*"
         return embed
+
+    totaluri_materiale = calculeaza_totaluri_materiale()
+    linii_materiale = []
+
+    for cheie, cantitate in totaluri_materiale.items():
+        if cantitate > 0:
+            produs = PRODUSE[cheie]
+            pret_total_material = produs["price"] * cantitate
+            linii_materiale.append(
+                f"{produs['emoji']} **{produs['label']}** — Cantitate totală: **{cantitate}** | Valoare totală: **{format_bani(pret_total_material)}**"
+            )
+
+    if linii_materiale:
+        embed.add_field(
+            name="🧾 Total pe fiecare material",
+            value="\n".join(linii_materiale),
+            inline=False
+        )
 
     embed.add_field(
         name="━━━━━━━━━━━━━━━━━━",
